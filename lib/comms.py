@@ -3,6 +3,8 @@ import struct
 from Crypto.Cipher import AES
 from . import crypto_utils
 from dh import create_dh_key, calculate_dh_secret
+from Crypto.Hash import HMAC
+from Crypto.Hash import SHA256
 
 class StealthConn(object):
     def __init__(self, conn, client=False, server=False, verbose=False):
@@ -35,15 +37,19 @@ class StealthConn(object):
         # 32 (4 byte) and insecure, hence changed to a block
         # cipher (AES). We are using AES-256 (key is 32 byte string).
 
-        self.iv = shared_hash[:16] # from week 04 lecture, block size is 128-bits.
-        self.key = shared_hash[:32] # from week 04 lecture, key length up to 256-bits.
-        self.cipher = AES.new(shared_hash[:32], AES.MODE_CBC, self.iv)
+        self.iv = shared_hash[:16]  # from week 04 lecture, block size is 128-bits. Using first 16 bytes of shared_hash.
+        self.key = shared_hash[32:]  # from week 04 lecture, key length up to 256-bits. Using last 32 bytes of shared_hash.
+        self.cipher = AES.new(self.key, AES.MODE_CBC, self.iv) #dlitz.net/software/pycrypto/api/current/Crypto.Cipher.AES-module.html
 
     def send(self, data):
         if self.cipher:
+            hmac = HMAC.new(((self.key).encode("ascii")), digestmod=SHA256)
+            data_with_hmac = bytes(hmac.hexdigest() + data.decode("ascii"), "ascii")
+
             # Need to pad the data to 16 bytes.
-            padded_data = crypto_utils.ANSI_X923_pad(data, self.block_size)
+            padded_data = crypto_utils.ANSI_X923_pad(data_with_hmac, self.block_size)
             encrypted_data = self.cipher.encrypt(padded_data)
+
             if self.verbose:
                 print("Original data: {}".format(data))
                 print("Encrypted data: {}".format(repr(encrypted_data)))
@@ -66,6 +72,19 @@ class StealthConn(object):
         if self.cipher:
             padded_data = self.cipher.decrypt(encrypted_data)
             data = crypto_utils.ANSI_X923_unpad(padded_data, self.block_size)
+
+            secret = (self.key).encode("ascii")
+            hmac2 = HMAC.new(secret, digestmod=SHA256)
+            hmac = data[:hmac2.digest_size * 2]
+            data = data[hmac2.digest_size * 2:]
+
+            if hmac2.hexdigest() == str(hmac, "ascii"):
+                print ("HMAC matches!")
+                print (hmac2.hexdigest())
+                print (str(hmac, "ascii"))
+            else:
+                print ("HMAC doesn't match!")
+
             if self.verbose:
                 print("Receiving packet of length {}".format(pkt_len))
                 print("Encrypted data: {}".format(repr(encrypted_data)))
