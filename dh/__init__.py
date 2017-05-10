@@ -11,7 +11,9 @@ from lib.helpers import read_hex
 # Hence, it would make sense to utilize the highest primes
 # available to us (without impacting performance heavily),
 # in order to future-proof our bot-net against the technological
-# progressions and calculation speeds of tomorrow.
+# progressions and calculation speeds of tomorrow. We want our adversaries
+# to not bother spending the enormous resources that would be necessary to break
+# our cryptosystem both now and in the future.
 
 # 8192-bit safe prime for Diffie-Hellman key exchange
 # obtained from RFC 3526
@@ -59,7 +61,7 @@ raw_prime = """FFFFFFFF FFFFFFFF C90FDAA2 2168C234 C4C6628B 80DC1CD1
       9558E447 5677E9AA 9E3050E2 765694DF C81F56E8 80B96E71
       60C980DD 98EDD3DF FFFFFFFF FFFFFFFF"""
 # Convert from the value supplied in the RFC to an integer
-# "p is a large prime"
+# "p is a large prime"; let p be prime_number.
 prime_number = read_hex(raw_prime)
 
 # 6144-bit safe prime for Diffie-Hellman key exchange
@@ -93,17 +95,17 @@ raw_prime = """FFFFFFFF FFFFFFFF C90FDAA2 2168C234 C4C6628B 80DC1CD1 29024E08
    387FE8D7 6E3C0468 043E8F66 3F4860EE 12BF2D5B 0B7474D6 E694F91E
    6DCC4024 FFFFFFFF FFFFFFFF"""
 # Convert from the value supplied in the RFC to an integer
-# "q is a large prime"
+# "q is a large prime"; let q be base_number.
 base_number = read_hex(raw_prime)
 
-# g is not just any prime, but a generator - aka primitive root - of p.
-# We have been given g in rfc3526, hence we don't need to worry about
-# finding q, h, or j from rfc2631.
+# g is not just any number, but a generator - aka primitive root - of p.
+# We have been given g in RFC3526, hence we don't need to worry about
+# finding q, h, or j from RFC2631.
 # "8192-bit MODP Group ... the generator is: 2."
 generator = 2
 
-# Project
-# DONE: write the appropriate code to perform DH key exchange
+# Project work...
+# Write the appropriate code to perform DH key exchange
 
 # This is from the perspective of a bot in a two-way handshake.
 # Hence we're only dealing with what Bot Alpha knows like
@@ -111,20 +113,18 @@ generator = 2
 
 def create_dh_key():
     # Creates a Diffie-Hellman key
+    # Following RFC2631's guidelines...
     # "xa is the party a's private key"; "X9.24 requires that the private
     # key x should be randomly generated within the interval [2, (q - 2)]."
     my_private = random.randint(2, (base_number - 2))
     # "ya is the party a's public key; ya = g ^ xa mod p"
     my_public = pow(generator, my_private, prime_number)
     return(my_public, my_private)
-    # a = random.randint(0, int(2**8))
-    # return (a, a)
 
 def calculate_dh_secret(their_public, my_private):
     # Calculate the shared secret
-    # ZZ = (yb ^ xa) mod p = (ya ^ xb) mod p
+    # "ZZ = (yb ^ xa) mod p = (ya ^ xb) mod p"
     shared_secret = pow(their_public, my_private, prime_number)
-    # shared_secret = their_public * my_private
 
     # Hash the value so that:
     # (a) There's no bias in the bits of the output
@@ -133,4 +133,5 @@ def calculate_dh_secret(their_public, my_private):
     # (c) We could add additional information if we wanted
     # Feel free to change SHA256 to a different value if more appropriate
     shared_hash = SHA256.new(bytes(str(shared_secret), "ascii")).hexdigest()
-    return shared_hash
+
+    return shared_hash  # Will be using this to generate many other things.
