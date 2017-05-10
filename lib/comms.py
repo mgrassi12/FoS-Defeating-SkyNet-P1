@@ -1,10 +1,14 @@
 import struct
+import datetime
 
 from Crypto.Cipher import AES
 from . import crypto_utils
 from dh import create_dh_key, calculate_dh_secret
 from Crypto.Hash import HMAC
 from Crypto.Hash import SHA256
+
+timestamp_format = "%d-%m-%Y %H:%M:%S:%f"
+timestamp_length = 26
 
 class StealthConn(object):
     def __init__(self, conn, client=False, server=False, verbose=False):
@@ -16,11 +20,12 @@ class StealthConn(object):
         self.block_size = 16  # bytes (128-bit)
         self.iv = None  # initialization variable
         self.key = None
+        self.time_of_last_communication = None
         self.initiate_session()
 
     def initiate_session(self):
         # Perform the initial connection handshake for agreeing on a shared secret 
-
+        self.time_of_last_communication = datetime.datetime.now()
         # Project code here...
         # This can be broken into code run just on the server or just on the client
         if self.server or self.client:
@@ -46,6 +51,10 @@ class StealthConn(object):
             hmac = HMAC.new(((self.key).encode("ascii")), digestmod=SHA256)
             data_with_hmac = bytes(hmac.hexdigest() + data.decode("ascii"), "ascii")
 
+            present_time = datetime.datetime.now()
+            timestr = datetime.datetime.strftime(present_time, timestamp_format)  # format the timestamp
+            data_with_hmac = bytes(timestr, 'ascii') + data_with_hmac  # prepend it to the message
+            
             # Need to pad the data to 16 bytes.
             padded_data = crypto_utils.ANSI_X923_pad(data_with_hmac, self.block_size)
             encrypted_data = self.cipher.encrypt(padded_data)
@@ -72,8 +81,19 @@ class StealthConn(object):
         if self.cipher:
             padded_data = self.cipher.decrypt(encrypted_data)
             data = crypto_utils.ANSI_X923_unpad(padded_data, self.block_size)
-
             secret = (self.key).encode("ascii")
+
+            timestamp = str(data[:timestamp_length], 'ascii')
+            data = data[timestamp_length:]
+
+            this_msg_time = datetime.datetime.strptime(timestamp, timestamp_format)
+            if this_msg_time <= self.time_of_last_communication:
+                print("Replay attack detected!")
+            else:
+                print("Timestamp is good.")
+
+            self.time_of_last_communication = this_msg_time
+
             hmac2 = HMAC.new(secret, digestmod=SHA256)
             hmac = data[:hmac2.digest_size * 2]
             data = data[hmac2.digest_size * 2:]
